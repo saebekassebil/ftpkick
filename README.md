@@ -6,6 +6,9 @@ to silently replace it with "deploy" in your mind.
 
     $ npm install ftpkick
 
+This module was heavily inspired by some code written by @jarl-dk in
+CoffeeScript.
+
 ## Example
 
 ```javascript
