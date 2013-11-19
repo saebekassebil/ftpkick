@@ -1,6 +1,6 @@
 # ftpkick
 
-Simply a module (and bin) that kicks your folder out the door and up onto
+Simply a module that kicks your folder out the door and up onto
 your FTP server of choice. If you don't like the word "kick", then you're allowed
 to silently replace it with "deploy" in your mind.
 
@@ -22,3 +22,4 @@ while the `targetDirectory` is the target where all your files hopefully will
 land.
 
 The method returns a promise, that will resolve on success and reject on failure
+
