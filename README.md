@@ -6,6 +6,27 @@ to silently replace it with "deploy" in your mind.
 
     $ npm install ftpkick
 
+## Example
+
+```javascript
+var ftpkick = require('ftpkick');
+
+var args = {
+  host: 'mytesthost',
+  user: 'developer',
+  password: 'supersecret'
+};
+
+ftpkick.connect(args).then(function(kicker) {
+  console.log('Uploading to /myfolder');
+  kicker.kick('./build', '/myfolder').then(function() {
+    console.log('Successfully uploaded to /myfolder');
+  }, function(e) {
+    console.log('Failed to upload', e);
+  });
+});
+```
+
 ## API
 ### `ftpkick.connect(parameters) -> Promise`
 
