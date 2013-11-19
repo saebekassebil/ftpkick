@@ -11,7 +11,7 @@ exports.connect = function connect(args) {
     });
 
     client.on('error', function(e) {
-      console.error(e);
+      //TODO: handle?
     });
 
     client.connect(args);

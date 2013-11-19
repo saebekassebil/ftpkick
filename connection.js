@@ -9,7 +9,8 @@ function recursiveRemove(client, dest) {
         return reject(err);
 
       function serialRemove(list, cb) {
-        if (!list.length) return cb();
+        if (!list.length)
+          return cb();
 
         var file = list.pop();
         if (file.type === 'd') {
@@ -57,7 +58,6 @@ function recursivePut(client, source, dest) {
         client.mkdir(dest, true, function(err) {
           if (err)
             return reject(err);
-          
           fs.readdir(source, function(err, files) {
             if (err)
               return reject(err);
@@ -96,13 +96,14 @@ function Connection(client) {
       }
 
       client.list(target, function(err, list) {
-        if (!err) {
-          // Target folder doesn't exist - let's upload
-          putAndEnd();
-        } else {
-          // Target folder already exists, so we delete it, and upload again
+        if (err) {
+          // target folder doesn't exists, so go ahead and create it
+          if (err.code === 550)
+            putAndEnd();
+          else
+            reject(err);
+        } else // Target folder already exists, so we delete it, and upload again
           recursiveRemove(client, target).then(putAndEnd);
-        }
       });
     });
 
