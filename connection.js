@@ -1,116 +1,154 @@
 var fs = require('fs')
+  , os = require('os')
   , path = require('path')
   , Promise = require('promise');
 
-function recursiveRemove(client, dest) {
-  var promise = Promise(function(resolve, reject) {
-    client.list(dest, function(err, list) {
-      if (err)
-        return reject(err);
+function walk(p, uploaded, cb) {
+  var pending = 0, changed = [];
+  uploaded = uploaded || {}
 
-      function serialRemove(list, cb) {
-        if (!list.length)
-          return cb();
+  fs.readdir(p, function(err, files) {
+    if (err) return cb(err);
+    pending = files.length;
 
-        var file = list.pop();
-        if (file.type === 'd') {
-          // Directory
-          recursiveRemove(client, path.join(dest, file.name)).then(function() {
-            serialRemove(list, cb);
+    files.forEach(function(file) {
+
+      file = path.join(p, file);
+      fs.stat(file, function(err, stat) {
+        if (err) return cb(err);
+
+        if (stat.isFile()) {
+          var time = file in uploaded ? (new Date(uploaded[file])).getTime() : 0;
+          var ctime = stat.ctime.getTime();
+
+          // File has changed if we have no record of it, or the ctime is
+          // newer than in the checkfile
+          if (!(time && ctime <= time))
+            changed.push({ file: file, ctime: ctime });
+
+          if (!--pending) cb(null, changed);
+        } else if (stat.isDirectory()) {
+          walk(file, uploaded, function(err, otherChanged) {
+            if (err) return cb(err);
+            changed = changed.concat(otherChanged);
+
+            if (!--pending) cb(null, changed);
           });
-        } else if (file.type === '-') {
-          // File
-          client.delete(path.join(dest, file.name), function() {
-            serialRemove(list, cb);
-          });
-        } else
-          reject(new Error('Couldn\'t handle file type ' + file.type));
-      }
-
-      serialRemove(list, function() {
-        client.rmdir(dest, function(err) {
-          if (err)
-            reject(err);
-          else
-            resolve()
-        });
+        }
       });
     });
   });
-
-  return promise;
 }
 
-function recursivePut(client, source, dest) {
+function tmpCheckfile(checkfile) {
+  return path.join(os.tmpdir(), checkfile);
+}
+
+function Connection(client, checkfile) {
+  this.client = client;
+}
+
+Connection.prototype.disconnect = function() {
+  this.client.end();
+}
+
+Connection.prototype._collect = function(p) {
   var promise = Promise(function(resolve, reject) {
-    fs.stat(source, function(err, stat) {
-      if (err)
-        return reject(err);
+    function walkin(uploaded) {
+      walk(p, uploaded, function(err, files) {
+        if (err)
+          reject(err);
+        else
+          resolve(files);
+      });
+    }
 
-      if (stat.isFile()) {
-        client.put(source, dest, function(err) {
-          if (err)
-            reject(err);
-          else
-            resolve();
-        });
-      } else if (stat.isDirectory()) {
-        client.mkdir(dest, true, function(err) {
-          if (err)
-            return reject(err);
-          fs.readdir(source, function(err, files) {
-            if (err)
-              return reject(err);
+    if (this.checkfile) {
+      var tmp = tmpCheckfile(this.checkfile);
 
-            function serialPut(list, cb) {
-              if (!list.length)
-                return cb();
+      fs.readFile(tmp, { encoding: 'utf8' }, function(err, data) {
+        var uploaded = err ? {} : JSON.parse(data).files;
+        this._uploaded = uploaded;
 
-              var file = list.pop();
-              recursivePut(client, source + '/' + file, dest + '/' + file)
-              .then(function() {
-                serialPut(list, cb);
-              });
-            }
-
-            serialPut(files, resolve);
-          });
-        });
-      } else {
-        reject(new Error('Couldn\'t handle file type ' + file.type));
-      }
-    });
-  });
+        walkin(uploaded);
+      }.bind(this));
+    } else {
+      walkin();
+    }
+  }.bind(this));
 
   return promise;
 }
 
-function Connection(client) {
-  function kick(local, target) {
-    var promise = Promise(function(resolve, reject) {
-      function putAndEnd() {
-        recursivePut(client, local, target).then(function() {
-          client.end();
-          resolve();
-        }, reject);
-      }
+Connection.prototype.kick = function(local, dest, checkfile) {
+  this.checkfile = checkfile;
+  var self = this;
+  client = this.client;
 
-      client.list(target, function(err, list) {
-        if (err) {
-          // target folder doesn't exists, so go ahead and create it
-          if (err.code === 550)
-            putAndEnd();
-          else
-            reject(err);
-        } else // Target folder already exists, so we delete it, and upload again
-          recursiveRemove(client, target).then(putAndEnd);
+  function upload(file) {
+    var destination = path.join(dest, path.relative(local, file));
+
+    console.log('Uploading file: ', destination);
+    var promise = Promise(function(resolve, reject) {
+      client.put(file, destination, false, function(err) {
+        if (err)
+          reject(err);
+        else
+          resolve(destination);
       });
     });
 
     return promise;
   }
 
-  this.kick = kick;
+  var promise = Promise(function(resolve, reject) {
+    var uploaded = 0, number;
+
+    function saveCheckfile(changed) {
+      // If we have a checkfile, then we want to append this destination
+      // so that we don't have to upload it redundantly later
+      if (checkfile) {
+        uploaded = self._uploaded || {}
+        changed.forEach(function(file) {
+          uploaded[file.file] = file.ctime;
+        });
+
+        var data = JSON.stringify({ files: uploaded });
+        var tmpfile = tmpCheckfile(checkfile);
+        fs.writeFile(tmpfile, data, function(err) {
+          if (err)
+            reject(err);
+          else {
+            console.log('Successfully saved checkfile "' + tmpfile + '"');
+            resolve(changed);
+          }
+        });
+      }
+
+      resolve(changed);
+    }
+
+    self._collect(local, checkfile)
+      .then(function(files) {
+        number = files.length;
+        if (!number) return resolve([]);
+
+        files.forEach(function(file) {
+          // Upload each file asynchronously
+          upload(file.file).then(function(destination) {
+            uploaded++;
+            console.log('Successfully uploaded: ', destination);
+
+            if (uploaded === number)
+              saveCheckfile(files);
+          }, function(err) {
+            reject(err);
+          });
+        });
+      });
+  });
+
+  return promise;
 }
 
 module.exports = Connection
