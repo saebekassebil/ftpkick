@@ -1,7 +1,9 @@
 var fs = require('fs')
   , os = require('os')
   , path = require('path')
-  , Promise = require('promise');
+  , util = require('util')
+  , Promise = require('promise')
+  , EventEmitter = require('events').EventEmitter;
 
 function walk(p, uploaded, cb) {
   var pending = 0, changed = [];
@@ -48,6 +50,8 @@ function Connection(client, checkfile) {
   this.client = client;
 }
 
+util.inherits(Connection, EventEmitter);
+
 Connection.prototype.disconnect = function() {
   this.client.end();
 }
@@ -88,7 +92,7 @@ Connection.prototype.kick = function(local, dest, checkfile) {
   function upload(file) {
     var destination = path.join(dest, path.relative(local, file));
 
-    console.log('Uploading file: ', destination);
+    self.emit('uploading', destination);
     var promise = Promise(function(resolve, reject) {
       client.put(file, destination, false, function(err) {
         if (err)
@@ -119,7 +123,7 @@ Connection.prototype.kick = function(local, dest, checkfile) {
           if (err)
             reject(err);
           else {
-            console.log('Successfully saved checkfile "' + tmpfile + '"');
+            self.emit('savedcheckfile', tmpfile);
             resolve(changed);
           }
         });
@@ -137,7 +141,7 @@ Connection.prototype.kick = function(local, dest, checkfile) {
           // Upload each file asynchronously
           upload(file.file).then(function(destination) {
             uploaded++;
-            console.log('Successfully uploaded: ', destination);
+            self.emit('uploaded', destination);
 
             if (uploaded === number)
               saveCheckfile(files);

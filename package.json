@@ -1,6 +1,6 @@
 {
   "name": "ftpkick",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "A module that will literally kick all your files to a remote FTP server",
   "main": "index.js",
   "keywords": [ "ftp", "sync", "deploy", "folder" ],
