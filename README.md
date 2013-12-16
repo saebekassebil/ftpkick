@@ -65,6 +65,6 @@ in the OS' temporary directory.
 
 The method returns a promise, that will resolve on success and reject on failure
 
-### `Connection#disconnect`
+### `Connection#disconnect()`
 
 Call this when you want to end the FTP connection (after a `kick`)
