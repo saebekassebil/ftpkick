@@ -1,5 +1,4 @@
 var fs = require('fs')
-  , os = require('os')
   , path = require('path')
   , util = require('util')
   , Promise = require('promise')
@@ -42,10 +41,6 @@ function walk(p, uploaded, cb) {
   });
 }
 
-function tmpCheckfile(checkfile) {
-  return path.join(os.tmpdir(), checkfile);
-}
-
 function Connection(client, checkfile) {
   this.client = client;
 }
@@ -56,7 +51,7 @@ Connection.prototype.disconnect = function() {
   this.client.end();
 }
 
-Connection.prototype._collect = function(p) {
+Connection.prototype._collect = function(p, force) {
   var promise = Promise(function(resolve, reject) {
     function walkin(uploaded) {
       walk(p, uploaded, function(err, files) {
@@ -67,8 +62,8 @@ Connection.prototype._collect = function(p) {
       });
     }
 
-    if (this.checkfile) {
-      var tmp = tmpCheckfile(this.checkfile);
+    if (this.checkfile && !force) {
+      var tmp = this.checkfile;
 
       fs.readFile(tmp, { encoding: 'utf8' }, function(err, data) {
         var uploaded = err ? {} : JSON.parse(data).files;
@@ -84,7 +79,7 @@ Connection.prototype._collect = function(p) {
   return promise;
 }
 
-Connection.prototype.kick = function(local, dest, checkfile) {
+Connection.prototype.kick = function(local, dest, checkfile, force) {
   this.checkfile = checkfile;
   var self = this;
   client = this.client;
@@ -118,7 +113,7 @@ Connection.prototype.kick = function(local, dest, checkfile) {
         });
 
         var data = JSON.stringify({ files: uploaded });
-        var tmpfile = tmpCheckfile(checkfile);
+        var tmpfile = checkfile;
         fs.writeFile(tmpfile, data, function(err) {
           if (err)
             reject(err);
@@ -132,7 +127,7 @@ Connection.prototype.kick = function(local, dest, checkfile) {
       resolve(changed);
     }
 
-    self._collect(local, checkfile)
+    self._collect(local, force)
       .then(function(files) {
         number = files.length;
         if (!number) return resolve([]);

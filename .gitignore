@@ -1,1 +1,16 @@
-node_modules/
+lib-cov
+*.seed
+*.log
+*.csv
+*.dat
+*.out
+*.pid
+*.gz
+*.test.js
+
+pids
+logs
+results
+build
+
+node_modules
